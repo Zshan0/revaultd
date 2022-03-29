@@ -1086,6 +1086,7 @@ impl DaemonControl {
     /// - If called for a non-manager
     /// - If the given Spend transaction refers to an unknown Unvault txid
     /// - If the Spend refers to an Unvault of a vault that isn't 'active'
+    /// HERE.
     pub fn update_spend_tx(&self, spend_tx: SpendTransaction) -> Result<(), CommandError> {
         let revaultd = self.revaultd.read().unwrap();
         manager_only!(revaultd);
