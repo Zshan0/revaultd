@@ -1112,13 +1112,33 @@ impl DaemonControl {
             db_unvaults.push(db_unvault);
         }
 
-        // The user has the ability to set priority to the transaction in
-        // setspendtx, here we always set it to false.
-        if db_spend_transaction(&db_path, &spend_txid)
-            .expect("Database must be available")
-            .is_some()
-        {
+        let mut old_tx =
+            db_spend_transaction(&db_path, &spend_txid).expect("Database must be available");
+
+        if let Some(unwrapped_tx) = old_tx.as_mut() {
+            // Merging the signatures of `old_tx` into `spend_tx` and saving it.
+            let signatures: Vec<BTreeMap<BitcoinPubKey, Vec<u8>>> = spend_tx
+                .psbt()
+                .inputs
+                .iter()
+                .map(|i| i.partial_sigs.clone())
+                .collect();
+
+            for (i, sigmap) in signatures.iter().enumerate() {
+                for (pubkey, raw_sig) in sigmap {
+                    let sig = secp256k1::Signature::from_der(&raw_sig[..raw_sig.len() - 1])
+                        .map_err(|_| CommandError::SpendInvalidSig(raw_sig.clone()))?;
+
+                    unwrapped_tx
+                        .psbt
+                        .add_signature(i, pubkey.key, sig, &revaultd.secp_ctx)
+                        .map_err(|_| CommandError::SpendInvalidSig(raw_sig.clone()))?;
+                }
+            }
+
             log::debug!("Updating Spend transaction '{}'", spend_txid);
+            // The user has the ability to set priority to the transaction in
+            // setspendtx, here we always set it to false.
             db_update_spend(&db_path, &spend_tx, false).expect("Database must be available");
         } else {
             log::debug!("Storing new Spend transaction '{}'", spend_txid);
